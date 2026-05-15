@@ -1,15 +1,17 @@
 import React from "react";
 import { PieceType, Player } from "@/lib/shogi";
 import { PieceDisplay } from "./PieceDisplay";
+import { cn } from "@/lib/utils";
 
 interface HandPiecesProps {
   player: Player;
   pieces: PieceType[];
   selectedPiece: PieceType | null;
   onPieceSelect: (type: PieceType) => void;
+  isActive: boolean;
 }
 
-export const HandPieces: React.FC<HandPiecesProps> = ({ player, pieces, selectedPiece, onPieceSelect }) => {
+export const HandPieces: React.FC<HandPiecesProps> = ({ player, pieces, selectedPiece, onPieceSelect, isActive }) => {
   const pieceCounts = pieces.reduce((acc, type) => {
     acc[type] = (acc[type] || 0) + 1;
     return acc;
@@ -18,24 +20,36 @@ export const HandPieces: React.FC<HandPiecesProps> = ({ player, pieces, selected
   const uniquePieces = Array.from(new Set(pieces));
 
   return (
-    <div className="flex flex-wrap gap-2 p-4 bg-card border border-border shadow-md rounded-md min-h-[5rem] items-center max-w-[500px]">
-      <div className="w-full text-sm font-bold mb-2 text-muted-foreground">
-        {player === 0 ? "先手 持ち駒" : "後手 持ち駒"}
-      </div>
-      {uniquePieces.length === 0 && <span className="text-muted-foreground text-sm opacity-50">なし</span>}
-      {uniquePieces.map((type) => (
-        <div key={type} className="relative w-10 h-12 sm:w-12 sm:h-14">
-          <PieceDisplay
-            piece={{ type, player }}
-            isSelected={selectedPiece === type}
-            onClick={() => onPieceSelect(type)}
-          />
+    <div className={cn(
+      "flex flex-row flex-wrap gap-1.5 px-3 py-2 rounded-md border min-h-[3rem] items-center",
+      "bg-card border-border shadow-sm",
+      isActive ? "ring-1 ring-primary/50" : "opacity-80",
+    )}>
+      <span className="text-[0.65rem] font-bold text-muted-foreground mr-1 whitespace-nowrap">
+        {player === 0 ? "先手持駒" : "後手持駒"}
+      </span>
+      {uniquePieces.length === 0 && (
+        <span className="text-muted-foreground text-xs opacity-50">なし</span>
+      )}
+      {uniquePieces.map(type => (
+        <button
+          key={type}
+          className={cn(
+            "relative cursor-pointer focus:outline-none",
+            selectedPiece === type && "ring-2 ring-primary ring-offset-1 rounded-sm",
+            !isActive && "cursor-default",
+          )}
+          style={{ width: "clamp(1.8rem, 4vmin, 2.5rem)", height: "clamp(2.1rem, 4.7vmin, 2.9rem)" }}
+          onClick={() => isActive && onPieceSelect(type)}
+          data-testid={`hand-piece-${player}-${type}`}
+        >
+          <PieceDisplay piece={{ type, player }} isSelected={selectedPiece === type} small />
           {pieceCounts[type] > 1 && (
-            <div className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-sm">
+            <div className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[0.55rem] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow">
               {pieceCounts[type]}
             </div>
           )}
-        </div>
+        </button>
       ))}
     </div>
   );

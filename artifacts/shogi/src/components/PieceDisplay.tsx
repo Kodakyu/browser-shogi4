@@ -1,47 +1,43 @@
-import React from "react";
-import { PieceType, Player, Piece, PIECE_DISPLAY, PROMOTED_PIECE } from "@/lib/shogi";
+import { PieceType, Piece, PIECE_DISPLAY } from "@/lib/shogi";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
 
 interface PieceDisplayProps {
   piece: Piece;
   className?: string;
-  onClick?: () => void;
   isSelected?: boolean;
+  small?: boolean;
 }
 
-const isPromoted = (type: PieceType): boolean => {
-  return ["prook", "pbishop", "psilver", "pknight", "plance", "ppawn"].includes(type);
-};
+const isPromoted = (type: PieceType): boolean =>
+  ["prook", "pbishop", "psilver", "pknight", "plance", "ppawn"].includes(type);
 
-export const PieceDisplay: React.FC<PieceDisplayProps> = ({ piece, className, onClick, isSelected }) => {
+export const PieceDisplay: React.FC<PieceDisplayProps> = ({ piece, isSelected, small }) => {
   const isGote = piece.player === 1;
   const promoted = isPromoted(piece.type);
   const display = PIECE_DISPLAY[piece.type][isGote ? 1 : 0];
 
   return (
-    <motion.button
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
-      onClick={(e) => {
-        if (onClick) {
-          e.stopPropagation();
-          onClick();
-        }
-      }}
-      className={cn(
-        "relative flex items-center justify-center w-full h-full text-[clamp(1rem,4vmin,2.5rem)] font-bold select-none cursor-pointer piece-drop-shadow transition-colors",
-        "bg-[#d4b58a] text-[#2c1d11]", // Piece wood color
-        isGote && "rotate-180",
-        promoted && "text-destructive",
-        isSelected && "ring-2 ring-primary bg-[#e6ceab]",
-        className
-      )}
-      style={{
-        clipPath: "polygon(50% 0%, 100% 20%, 90% 100%, 10% 100%, 0% 20%)", // Basic shogi piece shape
-      }}
-    >
-      <span className="leading-none">{display}</span>
-    </motion.button>
+    <div className={cn("relative w-full h-full", isGote && "rotate-180")}>
+      {/* Pentagon background — clipped shape only, text is NOT inside clip */}
+      <div
+        className={cn(
+          "absolute inset-0 transition-colors duration-100",
+          isSelected ? "bg-[#f0d060]" : "bg-[#d4b58a]",
+        )}
+        style={{ clipPath: "polygon(50% 0%, 95% 18%, 88% 100%, 12% 100%, 5% 18%)" }}
+      />
+      {/* Text layer — sits above clip, unclipped */}
+      <div className="absolute inset-0 flex items-center justify-center" style={{ paddingTop: "8%" }}>
+        <span
+          className={cn(
+            "font-bold leading-none select-none",
+            small ? "text-[clamp(0.5rem,2.5vmin,1rem)]" : "text-[clamp(0.55rem,3vmin,1.4rem)]",
+            promoted ? "text-red-700" : "text-[#2c1d11]",
+          )}
+        >
+          {display}
+        </span>
+      </div>
+    </div>
   );
 };
