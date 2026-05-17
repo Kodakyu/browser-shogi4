@@ -12,26 +12,11 @@ export const PromotionDialog: React.FC<PromotionDialogProps> = ({ move, onDecide
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => onDecide(false)}
-      />
-      {/* Dialog box */}
-      <div className="relative z-10 bg-card border border-border rounded-xl shadow-2xl font-serif p-6 min-w-[280px] flex flex-col items-center gap-4">
-        {/* Close button */}
-        <button
-          className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-lg leading-none"
-          onClick={() => onDecide(false)}
-          aria-label="閉じる"
-        >
-          ✕
-        </button>
-
-        <div className="text-2xl font-bold text-foreground">成りますか？</div>
-        <div className="text-sm text-muted-foreground">敵陣に入りました。成りますか？</div>
-
-        <div className="flex gap-4 mt-2">
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative z-10 bg-card border border-border rounded-xl shadow-2xl font-serif p-6 min-w-[260px] flex flex-col items-center gap-4">
+        <div className="text-xl font-bold text-foreground">成りますか？</div>
+        <div className="text-sm text-muted-foreground">敵陣に入りました。</div>
+        <div className="flex gap-4 mt-1">
           <Button
             variant="outline"
             className="w-28 h-14 text-lg border-primary text-primary hover:bg-primary/10"

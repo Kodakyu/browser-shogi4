@@ -18,6 +18,8 @@ interface GameStatusProps {
   onToggleTimer: () => void;
   timeLeft: number;
   forcedGameOver: { winner: Player; reason: string } | null;
+  onShowKifu: () => void;
+  kifuCount: number;
 }
 
 const CPU_LABELS: Record<CpuStrength, string> = {
@@ -36,7 +38,7 @@ export const GameStatus: React.FC<GameStatusProps> = ({
   gameState, onNewGame, onResign, onUndo, canUndo,
   cpuStrength, onCycleCpu, cpuThinking,
   timerEnabled, onToggleTimer, timeLeft,
-  forcedGameOver,
+  forcedGameOver, onShowKifu, kifuCount,
 }) => {
   const { currentPlayer, status, winner, inCheck } = gameState;
   const isOver = status !== "playing" || forcedGameOver !== null;
@@ -77,7 +79,6 @@ export const GameStatus: React.FC<GameStatusProps> = ({
 
       {/* Right: controls */}
       <div className="flex items-center gap-1.5 flex-wrap justify-end">
-        {/* CPU cycle */}
         <button
           onClick={onCycleCpu}
           className={cn(
@@ -93,7 +94,6 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           {CPU_LABELS[cpuStrength]}
         </button>
 
-        {/* Timer toggle */}
         <button
           onClick={onToggleTimer}
           className={cn(
@@ -107,7 +107,14 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           {timerEnabled ? "秒読: 入" : "秒読: 切"}
         </button>
 
-        {/* Undo (待った) */}
+        <button
+          onClick={onShowKifu}
+          className="text-xs font-bold px-2.5 py-1 rounded-full border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors whitespace-nowrap"
+          data-testid="button-show-kifu"
+        >
+          棋譜{kifuCount > 0 ? `(${kifuCount})` : ""}
+        </button>
+
         {!isOver && (
           <button
             onClick={onUndo}
@@ -124,7 +131,6 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           </button>
         )}
 
-        {/* Resign */}
         {!isOver && (
           <button
             onClick={onResign}
@@ -135,7 +141,6 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           </button>
         )}
 
-        {/* New game */}
         <Button
           onClick={onNewGame}
           size="sm"

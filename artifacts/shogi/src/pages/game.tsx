@@ -3,12 +3,14 @@ import {
   createInitialState, applyGameMove, getLegalMovesForSquare,
   getLegalDropsForPiece, GameState, Move, PieceType, Player,
 } from "@/lib/shogi";
+import { buildNotation } from "@/lib/kifu";
 import { getCPUMove } from "@/lib/cpu";
 import { getStrongCPUMove } from "@/lib/cpu-strong";
 import { Board } from "@/components/Board";
 import { HandPieces } from "@/components/HandPieces";
 import { PromotionDialog } from "@/components/PromotionDialog";
 import { GameStatus, CpuStrength } from "@/components/GameStatus";
+import { KifuPanel } from "@/components/KifuPanel";
 
 const CPU_PLAYER: Player = 1;
 const TIMER_SECONDS = 60;
@@ -16,6 +18,7 @@ const TIMER_SECONDS = 60;
 export default function GamePage() {
   const [gameState, setGameState] = useState<GameState>(createInitialState());
   const [history, setHistory] = useState<GameState[]>([]);
+  const [kifu, setKifu] = useState<string[]>([]);
   const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null);
   const [selectedDropPiece, setSelectedDropPiece] = useState<PieceType | null>(null);
   const [legalMoves, setLegalMoves] = useState<Move[]>([]);
@@ -25,7 +28,8 @@ export default function GamePage() {
   const [forcedGameOver, setForcedGameOver] = useState<{ winner: Player; reason: string } | null>(null);
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
-  // Ref to allow resign/timeout to access current player without stale closure
+  const [showKifu, setShowKifu] = useState(false);
+
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
 
@@ -33,12 +37,12 @@ export default function GamePage() {
   const isHumanTurn = !cpuActive || gameState.currentPlayer !== CPU_PLAYER;
   const isOver = gameState.status !== "playing" || forcedGameOver !== null;
 
-  // ── Reset timer on player change ──────────────────────────────────────────
+  // Reset timer on turn change
   useEffect(() => {
     setTimeLeft(TIMER_SECONDS);
   }, [gameState.currentPlayer]);
 
-  // ── Timer countdown ───────────────────────────────────────────────────────
+  // Timer countdown
   useEffect(() => {
     if (!timerEnabled || isOver || cpuThinking || !isHumanTurn) return;
     if (timeLeft <= 0) {
@@ -50,7 +54,7 @@ export default function GamePage() {
     return () => clearInterval(id);
   }, [timerEnabled, timeLeft, isOver, cpuThinking, isHumanTurn]);
 
-  // ── CPU move trigger ──────────────────────────────────────────────────────
+  // CPU move trigger
   useEffect(() => {
     if (!cpuActive || isOver) return;
     if (gameState.currentPlayer !== CPU_PLAYER) return;
@@ -64,6 +68,8 @@ export default function GamePage() {
         : getCPUMove(gameState);
 
       if (move) {
+        const notation = buildNotation(gameState.board, move, gameState.currentPlayer);
+        setKifu(k => [...k, notation]);
         setHistory(h => [...h, gameState]);
         setGameState(applyGameMove(gameState, move));
         setSelectedSquare(null);
@@ -76,8 +82,10 @@ export default function GamePage() {
     return () => clearTimeout(timer);
   }, [cpuActive, cpuStrength, gameState, isOver]);
 
-  // ── Execute a board move (shared helper) ──────────────────────────────────
+  // Execute a board move (shared helper)
   const executeMove = useCallback((move: Move) => {
+    const notation = buildNotation(gameState.board, move, gameState.currentPlayer);
+    setKifu(k => [...k, notation]);
     setHistory(h => [...h, gameState]);
     setGameState(applyGameMove(gameState, move));
     setSelectedSquare(null);
@@ -85,11 +93,10 @@ export default function GamePage() {
     setLegalMoves([]);
   }, [gameState]);
 
-  // ── Square click ──────────────────────────────────────────────────────────
+  // Square click
   const handleSquareClick = useCallback((row: number, col: number) => {
     if (isOver || !isHumanTurn || cpuThinking) return;
 
-    // Drop piece in hand selected → try placing it
     if (selectedDropPiece) {
       const dropMove = legalMoves.find(
         m => m.toRow === row && m.toCol === col && m.drop === selectedDropPiece,
@@ -130,7 +137,6 @@ export default function GamePage() {
     }
   }, [gameState, selectedSquare, selectedDropPiece, legalMoves, isOver, isHumanTurn, cpuThinking, executeMove]);
 
-  // ── Hand piece select ─────────────────────────────────────────────────────
   const handleDropPieceSelect = useCallback((player: number, pieceType: PieceType) => {
     if (isOver || player !== gameState.currentPlayer || !isHumanTurn || cpuThinking) return;
     setSelectedSquare(null);
@@ -138,17 +144,16 @@ export default function GamePage() {
     setLegalMoves(getLegalDropsForPiece(gameState, pieceType));
   }, [gameState, isOver, isHumanTurn, cpuThinking]);
 
-  // ── Promotion decision ────────────────────────────────────────────────────
   const handlePromotionDecision = useCallback((promote: boolean) => {
     if (!pendingPromotion) return;
     executeMove({ ...pendingPromotion, promote });
     setPendingPromotion(null);
   }, [pendingPromotion, executeMove]);
 
-  // ── New game ──────────────────────────────────────────────────────────────
   const handleNewGame = useCallback(() => {
     setGameState(createInitialState());
     setHistory([]);
+    setKifu([]);
     setSelectedSquare(null);
     setSelectedDropPiece(null);
     setLegalMoves([]);
@@ -158,7 +163,6 @@ export default function GamePage() {
     setTimeLeft(TIMER_SECONDS);
   }, []);
 
-  // ── Resign ────────────────────────────────────────────────────────────────
   const handleResign = useCallback(() => {
     if (isOver) return;
     const loser = gameState.currentPlayer;
@@ -166,13 +170,12 @@ export default function GamePage() {
     setForcedGameOver({ winner: (1 - loser) as Player, reason: "投了" });
   }, [gameState.currentPlayer, isOver]);
 
-  // ── Undo (待った) ─────────────────────────────────────────────────────────
   const handleUndo = useCallback(() => {
     if (history.length === 0) return;
-    // In CPU mode: undo 2 plies (human move + CPU response) so it's human's turn again
     const stepsBack = cpuActive && history.length >= 2 ? 2 : 1;
     const prevState = history[history.length - stepsBack];
     setHistory(h => h.slice(0, -stepsBack));
+    setKifu(k => k.slice(0, -stepsBack));
     setGameState(prevState);
     setSelectedSquare(null);
     setSelectedDropPiece(null);
@@ -183,7 +186,6 @@ export default function GamePage() {
     setTimeLeft(TIMER_SECONDS);
   }, [history, cpuActive]);
 
-  // ── CPU mode cycle ────────────────────────────────────────────────────────
   const handleCycleCpu = useCallback(() => {
     setCpuStrength(prev => prev === "off" ? "weak" : prev === "weak" ? "strong" : "off");
     setSelectedSquare(null);
@@ -192,13 +194,11 @@ export default function GamePage() {
     setCpuThinking(false);
   }, []);
 
-  // In 2-player mode (CPU off), show Gote's hand pieces upside-down
   const goteHandFlipped = cpuStrength === "off";
 
   return (
     <div className="w-full min-h-[100dvh] bg-background text-foreground font-serif flex flex-col items-center gap-2 p-2 box-border">
 
-      {/* Status bar */}
       <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
         <GameStatus
           gameState={gameState}
@@ -213,10 +213,11 @@ export default function GamePage() {
           onToggleTimer={() => setTimerEnabled(t => !t)}
           timeLeft={timeLeft}
           forcedGameOver={forcedGameOver}
+          onShowKifu={() => setShowKifu(true)}
+          kifuCount={kifu.length}
         />
       </div>
 
-      {/* Gote hand (後手持ち駒) */}
       <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
         <HandPieces
           player={1}
@@ -228,7 +229,6 @@ export default function GamePage() {
         />
       </div>
 
-      {/* Board — always square */}
       <div
         className="flex-shrink-0"
         style={{
@@ -245,7 +245,6 @@ export default function GamePage() {
         />
       </div>
 
-      {/* Sente hand (先手持ち駒) */}
       <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
         <HandPieces
           player={0}
@@ -258,6 +257,7 @@ export default function GamePage() {
       </div>
 
       <PromotionDialog move={pendingPromotion} onDecide={handlePromotionDecision} />
+      {showKifu && <KifuPanel kifu={kifu} onClose={() => setShowKifu(false)} />}
     </div>
   );
 }
