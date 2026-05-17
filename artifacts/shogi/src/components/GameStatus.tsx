@@ -1,5 +1,5 @@
 import React from "react";
-import { GameState } from "@/lib/shogi";
+import { GameState, Player } from "@/lib/shogi";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -8,9 +8,16 @@ export type CpuStrength = "off" | "weak" | "strong";
 interface GameStatusProps {
   gameState: GameState;
   onNewGame: () => void;
+  onResign: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
   cpuStrength: CpuStrength;
   onCycleCpu: () => void;
   cpuThinking: boolean;
+  timerEnabled: boolean;
+  onToggleTimer: () => void;
+  timeLeft: number;
+  forcedGameOver: { winner: Player; reason: string } | null;
 }
 
 const CPU_LABELS: Record<CpuStrength, string> = {
@@ -19,40 +26,62 @@ const CPU_LABELS: Record<CpuStrength, string> = {
   strong: "CPU: 強",
 };
 
+function timerColor(t: number) {
+  if (t > 30) return "text-foreground";
+  if (t > 10) return "text-amber-600";
+  return "text-red-600 animate-pulse";
+}
+
 export const GameStatus: React.FC<GameStatusProps> = ({
-  gameState, onNewGame, cpuStrength, onCycleCpu, cpuThinking,
+  gameState, onNewGame, onResign, onUndo, canUndo,
+  cpuStrength, onCycleCpu, cpuThinking,
+  timerEnabled, onToggleTimer, timeLeft,
+  forcedGameOver,
 }) => {
   const { currentPlayer, status, winner, inCheck } = gameState;
+  const isOver = status !== "playing" || forcedGameOver !== null;
+  const displayWinner = forcedGameOver?.winner ?? winner;
+  const displayReason = forcedGameOver?.reason ?? (status === "checkmate" ? "詰み" : "引き分け");
 
   return (
     <div className="flex flex-row flex-wrap items-center justify-between gap-2 px-3 py-2 bg-card border border-border rounded-lg shadow-md w-full">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="text-base font-bold text-foreground whitespace-nowrap">
-          {status === "playing" ? (
-            cpuThinking
-              ? <span className="text-primary animate-pulse">CPU思考中...</span>
-              : <span>手番: {currentPlayer === 0 ? "先手" : "後手"}</span>
-          ) : status === "checkmate" ? (
-            <span className="text-destructive font-black tracking-widest">詰み</span>
-          ) : (
-            <span>引き分け</span>
-          )}
-        </div>
-        {status === "checkmate" && winner !== null && (
-          <div className="text-sm font-bold text-primary whitespace-nowrap">
-            {winner === 0 ? "先手" : "後手"}の勝ち
-          </div>
-        )}
-        {status === "playing" && inCheck !== null && !cpuThinking && (
-          <div className="text-sm font-bold text-destructive animate-pulse whitespace-nowrap">王手！</div>
+      {/* Left: status */}
+      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+        {isOver ? (
+          <>
+            <span className="text-base font-black text-destructive tracking-widest">{displayReason}</span>
+            {displayWinner !== null && (
+              <span className="text-sm font-bold text-primary">
+                {displayWinner === 0 ? "先手" : "後手"}の勝ち
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="text-base font-bold text-foreground whitespace-nowrap">
+              {cpuThinking
+                ? <span className="text-primary animate-pulse">CPU思考中...</span>
+                : `手番: ${currentPlayer === 0 ? "先手" : "後手"}`}
+            </span>
+            {inCheck !== null && !cpuThinking && (
+              <span className="text-sm font-bold text-destructive animate-pulse">王手！</span>
+            )}
+            {timerEnabled && !cpuThinking && (
+              <span className={cn("text-sm font-mono font-bold tabular-nums", timerColor(timeLeft))}>
+                {String(Math.floor(timeLeft / 60)).padStart(2, "0")}:{String(timeLeft % 60).padStart(2, "0")}
+              </span>
+            )}
+          </>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Right: controls */}
+      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        {/* CPU cycle */}
         <button
           onClick={onCycleCpu}
           className={cn(
-            "text-xs font-bold px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap",
+            "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
             cpuStrength === "off"
               ? "bg-card text-muted-foreground border-border hover:border-primary/50"
               : cpuStrength === "weak"
@@ -64,13 +93,56 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           {CPU_LABELS[cpuStrength]}
         </button>
 
+        {/* Timer toggle */}
+        <button
+          onClick={onToggleTimer}
+          className={cn(
+            "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
+            timerEnabled
+              ? "bg-blue-100 text-blue-800 border-blue-300"
+              : "bg-card text-muted-foreground border-border hover:border-primary/50",
+          )}
+          data-testid="toggle-timer"
+        >
+          {timerEnabled ? "秒読: 入" : "秒読: 切"}
+        </button>
+
+        {/* Undo (待った) */}
+        {!isOver && (
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            className={cn(
+              "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
+              canUndo
+                ? "bg-card text-foreground border-border hover:border-primary/50 hover:bg-muted"
+                : "bg-card text-muted-foreground border-border opacity-40 cursor-not-allowed",
+            )}
+            data-testid="button-undo"
+          >
+            待った
+          </button>
+        )}
+
+        {/* Resign */}
+        {!isOver && (
+          <button
+            onClick={onResign}
+            className="text-xs font-bold px-2.5 py-1 rounded-full border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors whitespace-nowrap"
+            data-testid="button-resign"
+          >
+            投了
+          </button>
+        )}
+
+        {/* New game */}
         <Button
           onClick={onNewGame}
           size="sm"
-          className="font-bold tracking-wider whitespace-nowrap"
+          className="font-bold tracking-wider text-xs whitespace-nowrap h-7 px-3"
           data-testid="button-new-game"
         >
-          新しいゲーム
+          新局
         </Button>
       </div>
     </div>

@@ -9,9 +9,12 @@ interface HandPiecesProps {
   selectedPiece: PieceType | null;
   onPieceSelect: (type: PieceType) => void;
   isActive: boolean;
+  rotatePieces?: boolean;
 }
 
-export const HandPieces: React.FC<HandPiecesProps> = ({ player, pieces, selectedPiece, onPieceSelect, isActive }) => {
+export const HandPieces: React.FC<HandPiecesProps> = ({
+  player, pieces, selectedPiece, onPieceSelect, isActive, rotatePieces = false,
+}) => {
   const pieceCounts = pieces.reduce((acc, type) => {
     acc[type] = (acc[type] || 0) + 1;
     return acc;
@@ -43,9 +46,15 @@ export const HandPieces: React.FC<HandPiecesProps> = ({ player, pieces, selected
           onClick={() => isActive && onPieceSelect(type)}
           data-testid={`hand-piece-${player}-${type}`}
         >
-          <PieceDisplay piece={{ type, player }} isSelected={selectedPiece === type} small />
+          {/* rotatePieces shows pieces upside-down (from opponent's perspective in 2-player mode) */}
+          <div style={{ transform: rotatePieces ? "rotate(180deg)" : undefined, width: "100%", height: "100%" }}>
+            <PieceDisplay piece={{ type, player }} isSelected={selectedPiece === type} small />
+          </div>
           {pieceCounts[type] > 1 && (
-            <div className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[0.55rem] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow">
+            <div
+              className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[0.55rem] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow"
+              style={{ transform: rotatePieces ? "rotate(180deg)" : undefined }}
+            >
               {pieceCounts[type]}
             </div>
           )}
