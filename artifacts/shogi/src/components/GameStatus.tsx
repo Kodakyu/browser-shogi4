@@ -21,6 +21,9 @@ interface GameStatusProps {
   onShowKifu: () => void;
   kifuCount: number;
   onShowSfen: () => void;
+  onShowTsume: () => void;
+  tsumeMode: boolean;
+  tsumeMoves: number;
 }
 
 const CPU_LABELS: Record<CpuStrength, string> = {
@@ -40,6 +43,7 @@ export const GameStatus: React.FC<GameStatusProps> = ({
   cpuStrength, onCycleCpu, cpuThinking,
   timerEnabled, onToggleTimer, timeLeft,
   forcedGameOver, onShowKifu, kifuCount, onShowSfen,
+  onShowTsume, tsumeMode, tsumeMoves,
 }) => {
   const { currentPlayer, status, winner, inCheck } = gameState;
   const isOver = status !== "playing" || forcedGameOver !== null;
@@ -50,6 +54,11 @@ export const GameStatus: React.FC<GameStatusProps> = ({
     <div className="flex flex-row flex-wrap items-center justify-between gap-2 px-3 py-2 bg-card border border-border rounded-lg shadow-md w-full">
       {/* Left: status */}
       <div className="flex items-center gap-2 min-w-0 flex-wrap">
+        {tsumeMode && (
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-300 whitespace-nowrap">
+            詰将棋 {tsumeMoves > 0 ? `${tsumeMoves}手` : ""}
+          </span>
+        )}
         {isOver ? (
           <>
             <span className="text-base font-black text-destructive tracking-widest">{displayReason}</span>
@@ -69,7 +78,7 @@ export const GameStatus: React.FC<GameStatusProps> = ({
             {inCheck !== null && !cpuThinking && (
               <span className="text-sm font-bold text-destructive animate-pulse">王手！</span>
             )}
-            {timerEnabled && !cpuThinking && (
+            {timerEnabled && !cpuThinking && !tsumeMode && (
               <span className={cn("text-sm font-mono font-bold tabular-nums", timerColor(timeLeft))}>
                 {String(Math.floor(timeLeft / 60)).padStart(2, "0")}:{String(timeLeft % 60).padStart(2, "0")}
               </span>
@@ -80,33 +89,37 @@ export const GameStatus: React.FC<GameStatusProps> = ({
 
       {/* Right: controls */}
       <div className="flex items-center gap-1.5 flex-wrap justify-end">
-        <button
-          onClick={onCycleCpu}
-          className={cn(
-            "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
-            cpuStrength === "off"
-              ? "bg-card text-muted-foreground border-border hover:border-primary/50"
-              : cpuStrength === "weak"
-              ? "bg-amber-100 text-amber-800 border-amber-300"
-              : "bg-red-100 text-red-800 border-red-300",
-          )}
-          data-testid="toggle-cpu-mode"
-        >
-          {CPU_LABELS[cpuStrength]}
-        </button>
+        {!tsumeMode && (
+          <button
+            onClick={onCycleCpu}
+            className={cn(
+              "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
+              cpuStrength === "off"
+                ? "bg-card text-muted-foreground border-border hover:border-primary/50"
+                : cpuStrength === "weak"
+                ? "bg-amber-100 text-amber-800 border-amber-300"
+                : "bg-red-100 text-red-800 border-red-300",
+            )}
+            data-testid="toggle-cpu-mode"
+          >
+            {CPU_LABELS[cpuStrength]}
+          </button>
+        )}
 
-        <button
-          onClick={onToggleTimer}
-          className={cn(
-            "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
-            timerEnabled
-              ? "bg-blue-100 text-blue-800 border-blue-300"
-              : "bg-card text-muted-foreground border-border hover:border-primary/50",
-          )}
-          data-testid="toggle-timer"
-        >
-          {timerEnabled ? "秒読: 入" : "秒読: 切"}
-        </button>
+        {!tsumeMode && (
+          <button
+            onClick={onToggleTimer}
+            className={cn(
+              "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
+              timerEnabled
+                ? "bg-blue-100 text-blue-800 border-blue-300"
+                : "bg-card text-muted-foreground border-border hover:border-primary/50",
+            )}
+            data-testid="toggle-timer"
+          >
+            {timerEnabled ? "秒読: 入" : "秒読: 切"}
+          </button>
+        )}
 
         <button
           onClick={onShowKifu}
@@ -123,6 +136,20 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           title="SFEN形式で局面を保存・共有"
         >
           共有
+        </button>
+
+        <button
+          onClick={onShowTsume}
+          className={cn(
+            "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
+            tsumeMode
+              ? "bg-violet-100 text-violet-800 border-violet-300"
+              : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground",
+          )}
+          data-testid="button-show-tsume"
+          title="詰将棋モード"
+        >
+          詰将棋
         </button>
 
         {!isOver && (
