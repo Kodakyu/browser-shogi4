@@ -20,6 +20,7 @@ interface GameStatusProps {
   forcedGameOver: { winner: Player; reason: string } | null;
   onShowKifu: () => void;
   kifuCount: number;
+  onShowSfen: () => void;
 }
 
 const CPU_LABELS: Record<CpuStrength, string> = {
@@ -38,7 +39,7 @@ export const GameStatus: React.FC<GameStatusProps> = ({
   gameState, onNewGame, onResign, onUndo, canUndo,
   cpuStrength, onCycleCpu, cpuThinking,
   timerEnabled, onToggleTimer, timeLeft,
-  forcedGameOver, onShowKifu, kifuCount,
+  forcedGameOver, onShowKifu, kifuCount, onShowSfen,
 }) => {
   const { currentPlayer, status, winner, inCheck } = gameState;
   const isOver = status !== "playing" || forcedGameOver !== null;
@@ -113,6 +114,15 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           data-testid="button-show-kifu"
         >
           棋譜{kifuCount > 0 ? `(${kifuCount})` : ""}
+        </button>
+
+        <button
+          onClick={onShowSfen}
+          className="text-xs font-bold px-2.5 py-1 rounded-full border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors whitespace-nowrap"
+          data-testid="button-show-sfen"
+          title="SFEN形式で局面を保存・共有"
+        >
+          共有
         </button>
 
         {!isOver && (

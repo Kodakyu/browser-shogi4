@@ -4,6 +4,7 @@ import {
   getLegalDropsForPiece, GameState, Move, PieceType, Player,
 } from "@/lib/shogi";
 import { buildNotation } from "@/lib/kifu";
+import { sfenToState, isValidSfen } from "@/lib/sfen";
 import { getCPUMove } from "@/lib/cpu";
 import { getStrongCPUMove } from "@/lib/cpu-strong";
 import { Board } from "@/components/Board";
@@ -11,6 +12,7 @@ import { HandPieces } from "@/components/HandPieces";
 import { PromotionDialog } from "@/components/PromotionDialog";
 import { GameStatus, CpuStrength } from "@/components/GameStatus";
 import { KifuPanel } from "@/components/KifuPanel";
+import { SfenPanel } from "@/components/SfenPanel";
 
 const CPU_PLAYER: Player = 1;
 const TIMER_SECONDS = 60;
@@ -29,6 +31,7 @@ export default function GamePage() {
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [showKifu, setShowKifu] = useState(false);
+  const [showSfen, setShowSfen] = useState(false);
   // null = live game, 0 = initial, k = after move k
   const [reviewIndex, setReviewIndex] = useState<number | null>(null);
 
@@ -49,6 +52,26 @@ export default function GamePage() {
   const displayedState: GameState = isReviewing
     ? (allPositions[reviewIndex] ?? gameState)
     : gameState;
+
+  // ── Load position from URL ?sfen= on first mount ────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sfenParam = params.get("sfen");
+    if (sfenParam && isValidSfen(sfenParam)) {
+      try {
+        setGameState(sfenToState(sfenParam));
+        setHistory([]);
+        setKifu([]);
+        setReviewIndex(null);
+        // Clean URL without full reload
+        const url = new URL(window.location.href);
+        url.searchParams.delete("sfen");
+        window.history.replaceState({}, "", url.toString());
+      } catch {
+        // ignore invalid SFEN
+      }
+    }
+  }, []);
 
   // ── Reset timer on turn change ──────────────────────────────────────────
   useEffect(() => {
@@ -237,6 +260,22 @@ export default function GamePage() {
     setReviewIndex(null);
   }, [reviewIndex, allPositions, gameState, history, kifu]);
 
+  // Load a position from SFEN (resets history/kifu, keeps as fresh start)
+  const handleLoadSfen = useCallback((state: GameState) => {
+    setGameState(state);
+    setHistory([]);
+    setKifu([]);
+    setSelectedSquare(null);
+    setSelectedDropPiece(null);
+    setLegalMoves([]);
+    setPendingPromotion(null);
+    setCpuThinking(false);
+    setForcedGameOver(null);
+    setTimeLeft(TIMER_SECONDS);
+    setReviewIndex(null);
+    setShowSfen(false);
+  }, []);
+
   const goteHandFlipped = cpuStrength === "off";
 
   return (
@@ -271,6 +310,7 @@ export default function GamePage() {
           forcedGameOver={forcedGameOver}
           onShowKifu={() => setShowKifu(true)}
           kifuCount={kifu.length}
+          onShowSfen={() => setShowSfen(true)}
         />
       </div>
 
@@ -325,6 +365,14 @@ export default function GamePage() {
           onNavigate={handleNavigate}
           onRestorePosition={handleRestorePosition}
           onClose={() => setShowKifu(false)}
+        />
+      )}
+
+      {showSfen && (
+        <SfenPanel
+          gameState={gameState}
+          onLoadPosition={handleLoadSfen}
+          onClose={() => setShowSfen(false)}
         />
       )}
     </div>
