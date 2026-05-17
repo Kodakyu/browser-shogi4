@@ -4,12 +4,13 @@ import {
   getLegalDropsForPiece, GameState, Move, PieceType, Player,
 } from "@/lib/shogi";
 import { getCPUMove } from "@/lib/cpu";
+import { getStrongCPUMove } from "@/lib/cpu-strong";
 import { Board } from "@/components/Board";
 import { HandPieces } from "@/components/HandPieces";
 import { PromotionDialog } from "@/components/PromotionDialog";
-import { GameStatus } from "@/components/GameStatus";
+import { GameStatus, CpuStrength } from "@/components/GameStatus";
 
-const CPU_PLAYER: Player = 1; // CPU plays as Gote (後手)
+const CPU_PLAYER: Player = 1;
 
 export default function GamePage() {
   const [gameState, setGameState] = useState<GameState>(createInitialState());
@@ -17,18 +18,24 @@ export default function GamePage() {
   const [selectedDropPiece, setSelectedDropPiece] = useState<PieceType | null>(null);
   const [legalMoves, setLegalMoves] = useState<Move[]>([]);
   const [pendingPromotion, setPendingPromotion] = useState<Move | null>(null);
-  const [cpuMode, setCpuMode] = useState(false);
+  const [cpuStrength, setCpuStrength] = useState<CpuStrength>("off");
   const [cpuThinking, setCpuThinking] = useState(false);
 
-  // CPU move trigger
+  const cpuActive = cpuStrength !== "off";
+
   useEffect(() => {
-    if (!cpuMode) return;
+    if (!cpuActive) return;
     if (gameState.status !== "playing") return;
     if (gameState.currentPlayer !== CPU_PLAYER) return;
 
     setCpuThinking(true);
+
+    // Use setTimeout so the UI can render "CPU思考中..." before blocking computation
     const timer = setTimeout(() => {
-      const move = getCPUMove(gameState);
+      const move = cpuStrength === "strong"
+        ? getStrongCPUMove(gameState, 3)
+        : getCPUMove(gameState);
+
       if (move) {
         setGameState(prev => applyGameMove(prev, move));
         setSelectedSquare(null);
@@ -36,18 +43,17 @@ export default function GamePage() {
         setLegalMoves([]);
       }
       setCpuThinking(false);
-    }, 500 + Math.random() * 400); // 500–900ms delay feels natural
+    }, cpuStrength === "strong" ? 80 : 500 + Math.random() * 400);
 
     return () => clearTimeout(timer);
-  }, [cpuMode, gameState]);
+  }, [cpuActive, cpuStrength, gameState]);
 
-  const isHumanTurn = !cpuMode || gameState.currentPlayer !== CPU_PLAYER;
+  const isHumanTurn = !cpuActive || gameState.currentPlayer !== CPU_PLAYER;
 
   const handleSquareClick = useCallback((row: number, col: number) => {
     if (gameState.status !== "playing") return;
     if (!isHumanTurn || cpuThinking) return;
 
-    // 1. Drop piece selected — try to place it
     if (selectedDropPiece) {
       const dropMove = legalMoves.find(
         m => m.toRow === row && m.toCol === col && m.drop === selectedDropPiece,
@@ -60,19 +66,15 @@ export default function GamePage() {
       }
       setSelectedDropPiece(null);
       setLegalMoves([]);
-      // fall through to try selecting a piece
     }
 
     const clickedPiece = gameState.board[row][col];
 
-    // 2. Legal move destination for selected piece
     if (selectedSquare) {
       const movesHere = legalMoves.filter(m => m.toRow === row && m.toCol === col && !m.drop);
-
       if (movesHere.length > 0) {
         const hasPromote = movesHere.some(m => m.promote === true);
         const hasNoPromote = movesHere.some(m => !m.promote);
-
         if (hasPromote && hasNoPromote) {
           setPendingPromotion(movesHere[0]);
         } else {
@@ -83,21 +85,16 @@ export default function GamePage() {
         }
         return;
       }
-
-      // Clicked own piece — reselect
       if (clickedPiece && clickedPiece.player === gameState.currentPlayer) {
         setSelectedSquare([row, col]);
         setLegalMoves(getLegalMovesForSquare(gameState, row, col));
         return;
       }
-
-      // Clicked elsewhere — deselect
       setSelectedSquare(null);
       setLegalMoves([]);
       return;
     }
 
-    // 3. Select current player's piece
     if (clickedPiece && clickedPiece.player === gameState.currentPlayer) {
       setSelectedSquare([row, col]);
       setSelectedDropPiece(null);
@@ -116,8 +113,7 @@ export default function GamePage() {
 
   const handlePromotionDecision = useCallback((promote: boolean) => {
     if (!pendingPromotion) return;
-    const move = { ...pendingPromotion, promote };
-    setGameState(applyGameMove(gameState, move));
+    setGameState(applyGameMove(gameState, { ...pendingPromotion, promote }));
     setPendingPromotion(null);
     setSelectedSquare(null);
     setLegalMoves([]);
@@ -132,8 +128,10 @@ export default function GamePage() {
     setCpuThinking(false);
   }, []);
 
-  const handleToggleCpuMode = useCallback(() => {
-    setCpuMode(prev => !prev);
+  const handleCycleCpu = useCallback(() => {
+    setCpuStrength(prev =>
+      prev === "off" ? "weak" : prev === "weak" ? "strong" : "off"
+    );
     setSelectedSquare(null);
     setSelectedDropPiece(null);
     setLegalMoves([]);
@@ -141,21 +139,21 @@ export default function GamePage() {
   }, []);
 
   return (
-    <div className="min-h-[100dvh] w-full bg-background text-foreground font-serif flex flex-col items-center p-3 gap-2 overflow-hidden">
+    <div className="w-full min-h-[100dvh] bg-background text-foreground font-serif flex flex-col items-center gap-2 p-2 box-border">
+
       {/* Status bar */}
-      <div className="w-full max-w-[700px]">
+      <div className="w-full" style={{ maxWidth: "var(--board-size, 660px)" }}>
         <GameStatus
           gameState={gameState}
           onNewGame={handleNewGame}
-          cpuMode={cpuMode}
-          cpuPlayer={CPU_PLAYER}
-          onToggleCpuMode={handleToggleCpuMode}
+          cpuStrength={cpuStrength}
+          onCycleCpu={handleCycleCpu}
           cpuThinking={cpuThinking}
         />
       </div>
 
-      {/* Gote hand (後手持ち駒) */}
-      <div className="w-full max-w-[700px]">
+      {/* Gote hand */}
+      <div className="w-full" style={{ maxWidth: "var(--board-size, 660px)" }}>
         <HandPieces
           player={1}
           pieces={gameState.capturedByGote}
@@ -165,24 +163,25 @@ export default function GamePage() {
         />
       </div>
 
-      {/* Board — fills remaining space */}
+      {/* Board — always square, sized to fit viewport */}
       <div
-        className="flex-1 w-full max-w-[700px] min-h-0"
-        style={{ aspectRatio: "10/10" }}
+        className="flex-shrink-0"
+        style={{
+          width: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)",
+          height: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)",
+        }}
       >
-        <div className="w-full h-full" style={{ maxHeight: "min(calc(100dvh - 14rem), 700px)" }}>
-          <Board
-            board={gameState.board}
-            selectedSquare={selectedSquare}
-            legalMoves={legalMoves}
-            lastMove={gameState.lastMove}
-            onSquareClick={handleSquareClick}
-          />
-        </div>
+        <Board
+          board={gameState.board}
+          selectedSquare={selectedSquare}
+          legalMoves={legalMoves}
+          lastMove={gameState.lastMove}
+          onSquareClick={handleSquareClick}
+        />
       </div>
 
-      {/* Sente hand (先手持ち駒) */}
-      <div className="w-full max-w-[700px]">
+      {/* Sente hand */}
+      <div className="w-full" style={{ maxWidth: "var(--board-size, 660px)" }}>
         <HandPieces
           player={0}
           pieces={gameState.capturedBySente}
