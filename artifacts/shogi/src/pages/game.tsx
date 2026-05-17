@@ -29,6 +29,8 @@ export default function GamePage() {
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [showKifu, setShowKifu] = useState(false);
+  // null = live game, 0 = initial, k = after move k
+  const [reviewIndex, setReviewIndex] = useState<number | null>(null);
 
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
@@ -36,15 +38,26 @@ export default function GamePage() {
   const cpuActive = cpuStrength !== "off";
   const isHumanTurn = !cpuActive || gameState.currentPlayer !== CPU_PLAYER;
   const isOver = gameState.status !== "playing" || forcedGameOver !== null;
+  const isReviewing = reviewIndex !== null;
 
-  // Reset timer on turn change
+  // allPositions[0] = initial state, allPositions[k] = state after move k
+  const allPositions: GameState[] = history.length > 0
+    ? [...history, gameState]
+    : [gameState];
+
+  // What to show on the board (live or reviewed)
+  const displayedState: GameState = isReviewing
+    ? (allPositions[reviewIndex] ?? gameState)
+    : gameState;
+
+  // ── Reset timer on turn change ──────────────────────────────────────────
   useEffect(() => {
     setTimeLeft(TIMER_SECONDS);
   }, [gameState.currentPlayer]);
 
-  // Timer countdown
+  // ── Timer countdown ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (!timerEnabled || isOver || cpuThinking || !isHumanTurn) return;
+    if (!timerEnabled || isOver || cpuThinking || !isHumanTurn || isReviewing) return;
     if (timeLeft <= 0) {
       const loser = gameStateRef.current.currentPlayer;
       setForcedGameOver({ winner: (1 - loser) as Player, reason: "時間切れ" });
@@ -52,11 +65,11 @@ export default function GamePage() {
     }
     const id = setInterval(() => setTimeLeft(t => t - 1), 1000);
     return () => clearInterval(id);
-  }, [timerEnabled, timeLeft, isOver, cpuThinking, isHumanTurn]);
+  }, [timerEnabled, timeLeft, isOver, cpuThinking, isHumanTurn, isReviewing]);
 
-  // CPU move trigger
+  // ── CPU move trigger ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!cpuActive || isOver) return;
+    if (!cpuActive || isOver || isReviewing) return;
     if (gameState.currentPlayer !== CPU_PLAYER) return;
 
     setCpuThinking(true);
@@ -80,9 +93,9 @@ export default function GamePage() {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [cpuActive, cpuStrength, gameState, isOver]);
+  }, [cpuActive, cpuStrength, gameState, isOver, isReviewing]);
 
-  // Execute a board move (shared helper)
+  // ── Execute a board move ──────────────────────────────────────────────────
   const executeMove = useCallback((move: Move) => {
     const notation = buildNotation(gameState.board, move, gameState.currentPlayer);
     setKifu(k => [...k, notation]);
@@ -93,9 +106,9 @@ export default function GamePage() {
     setLegalMoves([]);
   }, [gameState]);
 
-  // Square click
+  // ── Square click ──────────────────────────────────────────────────────────
   const handleSquareClick = useCallback((row: number, col: number) => {
-    if (isOver || !isHumanTurn || cpuThinking) return;
+    if (isOver || !isHumanTurn || cpuThinking || isReviewing) return;
 
     if (selectedDropPiece) {
       const dropMove = legalMoves.find(
@@ -135,14 +148,14 @@ export default function GamePage() {
       setSelectedDropPiece(null);
       setLegalMoves(getLegalMovesForSquare(gameState, row, col));
     }
-  }, [gameState, selectedSquare, selectedDropPiece, legalMoves, isOver, isHumanTurn, cpuThinking, executeMove]);
+  }, [gameState, selectedSquare, selectedDropPiece, legalMoves, isOver, isHumanTurn, cpuThinking, isReviewing, executeMove]);
 
   const handleDropPieceSelect = useCallback((player: number, pieceType: PieceType) => {
-    if (isOver || player !== gameState.currentPlayer || !isHumanTurn || cpuThinking) return;
+    if (isOver || isReviewing || player !== gameState.currentPlayer || !isHumanTurn || cpuThinking) return;
     setSelectedSquare(null);
     setSelectedDropPiece(pieceType);
     setLegalMoves(getLegalDropsForPiece(gameState, pieceType));
-  }, [gameState, isOver, isHumanTurn, cpuThinking]);
+  }, [gameState, isOver, isReviewing, isHumanTurn, cpuThinking]);
 
   const handlePromotionDecision = useCallback((promote: boolean) => {
     if (!pendingPromotion) return;
@@ -161,6 +174,7 @@ export default function GamePage() {
     setCpuThinking(false);
     setForcedGameOver(null);
     setTimeLeft(TIMER_SECONDS);
+    setReviewIndex(null);
   }, []);
 
   const handleResign = useCallback(() => {
@@ -184,6 +198,7 @@ export default function GamePage() {
     setCpuThinking(false);
     setForcedGameOver(null);
     setTimeLeft(TIMER_SECONDS);
+    setReviewIndex(null);
   }, [history, cpuActive]);
 
   const handleCycleCpu = useCallback(() => {
@@ -194,18 +209,59 @@ export default function GamePage() {
     setCpuThinking(false);
   }, []);
 
+  // Navigate within kifu (null = live)
+  const handleNavigate = useCallback((index: number | null) => {
+    setReviewIndex(index);
+    setSelectedSquare(null);
+    setSelectedDropPiece(null);
+    setLegalMoves([]);
+  }, []);
+
+  // Restore game to the currently reviewed position
+  const handleRestorePosition = useCallback(() => {
+    if (reviewIndex === null) return;
+    const target = allPositions[reviewIndex] ?? gameState;
+    // Trim history and kifu to this point
+    const trimmedHistory = history.slice(0, reviewIndex);
+    const trimmedKifu = kifu.slice(0, reviewIndex);
+    setGameState(target);
+    setHistory(trimmedHistory);
+    setKifu(trimmedKifu);
+    setSelectedSquare(null);
+    setSelectedDropPiece(null);
+    setLegalMoves([]);
+    setPendingPromotion(null);
+    setCpuThinking(false);
+    setForcedGameOver(null);
+    setTimeLeft(TIMER_SECONDS);
+    setReviewIndex(null);
+  }, [reviewIndex, allPositions, gameState, history, kifu]);
+
   const goteHandFlipped = cpuStrength === "off";
 
   return (
     <div className="w-full min-h-[100dvh] bg-background text-foreground font-serif flex flex-col items-center gap-2 p-2 box-border">
 
+      {/* Review mode banner */}
+      {isReviewing && (
+        <div
+          className="w-full flex items-center justify-between px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-lg text-sm font-bold text-primary cursor-pointer"
+          style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}
+          onClick={() => setShowKifu(true)}
+        >
+          <span>棋譜閲覧中 — 第{reviewIndex === 0 ? "0（初期局面）" : `${reviewIndex}`}手</span>
+          <span className="text-xs font-normal opacity-70">クリックで棋譜を開く</span>
+        </div>
+      )}
+
+      {/* Status bar */}
       <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
         <GameStatus
           gameState={gameState}
           onNewGame={handleNewGame}
           onResign={handleResign}
           onUndo={handleUndo}
-          canUndo={history.length > 0 && !cpuThinking}
+          canUndo={history.length > 0 && !cpuThinking && !isReviewing}
           cpuStrength={cpuStrength}
           onCycleCpu={handleCycleCpu}
           cpuThinking={cpuThinking}
@@ -218,17 +274,19 @@ export default function GamePage() {
         />
       </div>
 
+      {/* Gote hand */}
       <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
         <HandPieces
           player={1}
-          pieces={gameState.capturedByGote}
-          selectedPiece={gameState.currentPlayer === 1 && !cpuThinking ? selectedDropPiece : null}
+          pieces={displayedState.capturedByGote}
+          selectedPiece={!isReviewing && gameState.currentPlayer === 1 && !cpuThinking ? selectedDropPiece : null}
           onPieceSelect={type => handleDropPieceSelect(1, type)}
-          isActive={gameState.currentPlayer === 1 && isHumanTurn && !cpuThinking && !isOver}
+          isActive={!isReviewing && gameState.currentPlayer === 1 && isHumanTurn && !cpuThinking && !isOver}
           rotatePieces={goteHandFlipped}
         />
       </div>
 
+      {/* Board */}
       <div
         className="flex-shrink-0"
         style={{
@@ -237,27 +295,38 @@ export default function GamePage() {
         }}
       >
         <Board
-          board={gameState.board}
-          selectedSquare={selectedSquare}
-          legalMoves={legalMoves}
-          lastMove={gameState.lastMove}
+          board={displayedState.board}
+          selectedSquare={isReviewing ? null : selectedSquare}
+          legalMoves={isReviewing ? [] : legalMoves}
+          lastMove={displayedState.lastMove}
           onSquareClick={handleSquareClick}
         />
       </div>
 
+      {/* Sente hand */}
       <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
         <HandPieces
           player={0}
-          pieces={gameState.capturedBySente}
-          selectedPiece={gameState.currentPlayer === 0 ? selectedDropPiece : null}
+          pieces={displayedState.capturedBySente}
+          selectedPiece={!isReviewing && gameState.currentPlayer === 0 ? selectedDropPiece : null}
           onPieceSelect={type => handleDropPieceSelect(0, type)}
-          isActive={gameState.currentPlayer === 0 && !cpuThinking && !isOver}
+          isActive={!isReviewing && gameState.currentPlayer === 0 && !cpuThinking && !isOver}
           rotatePieces={false}
         />
       </div>
 
       <PromotionDialog move={pendingPromotion} onDecide={handlePromotionDecision} />
-      {showKifu && <KifuPanel kifu={kifu} onClose={() => setShowKifu(false)} />}
+
+      {showKifu && (
+        <KifuPanel
+          kifu={kifu}
+          reviewIndex={reviewIndex}
+          totalPositions={kifu.length}
+          onNavigate={handleNavigate}
+          onRestorePosition={handleRestorePosition}
+          onClose={() => setShowKifu(false)}
+        />
+      )}
     </div>
   );
 }
