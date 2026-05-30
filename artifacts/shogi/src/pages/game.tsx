@@ -7,18 +7,19 @@ import { buildNotation } from "@/lib/kifu";
 import { sfenToState, isValidSfen } from "@/lib/sfen";
 import { getCPUMove } from "@/lib/cpu";
 import { getStrongCPUMove } from "@/lib/cpu-strong";
-import { TSUME_PUZZLES, TsumePuzzle } from "@/lib/tsume-puzzles";
 import { Board } from "@/components/Board";
 import { HandPieces } from "@/components/HandPieces";
 import { PromotionDialog } from "@/components/PromotionDialog";
 import { GameStatus, CpuStrength } from "@/components/GameStatus";
 import { KifuPanel } from "@/components/KifuPanel";
 import { SfenPanel } from "@/components/SfenPanel";
-import { TsumePanel } from "@/components/TsumePanel";
-import { cn } from "@/lib/utils";
 
 const CPU_PLAYER: Player = 1;
 const TIMER_SECONDS = 60;
+
+// The board + labels occupy the full width. Non-board vertical space:
+// status bar ~3.2rem + hand×2 ~2.8rem×2 + gaps ~1rem + review banner (conditional)
+const BOARD_SIZE = "min(calc(100dvh - 12rem), calc(100dvw - 0.5rem), 660px)";
 
 export default function GamePage() {
   const [gameState, setGameState] = useState<GameState>(createInitialState());
@@ -35,26 +36,15 @@ export default function GamePage() {
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [showKifu, setShowKifu] = useState(false);
   const [showSfen, setShowSfen] = useState(false);
-  const [showTsumePanel, setShowTsumePanel] = useState(false);
   const [reviewIndex, setReviewIndex] = useState<number | null>(null);
-
-  // Tsume mode
-  const [tsumeMode, setTsumeMode] = useState(false);
-  const [tsumePuzzle, setTsumePuzzle] = useState<TsumePuzzle | null>(null);
-  const [tsumeSolvedIds, setTsumeSolvedIds] = useState<Set<string>>(new Set());
-  const [tsumeSolved, setTsumeSolved] = useState(false);
 
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
 
-  const cpuActive = tsumeMode || cpuStrength !== "off";
-  const effectiveCpuStrength: CpuStrength = tsumeMode ? "strong" : cpuStrength;
+  const cpuActive = cpuStrength !== "off";
   const isHumanTurn = !cpuActive || gameState.currentPlayer !== CPU_PLAYER;
   const isOver = gameState.status !== "playing" || forcedGameOver !== null;
   const isReviewing = reviewIndex !== null;
-
-  // Sente move count in tsume mode (each pair of half-moves = 1 for sente, 1 for gote)
-  const tsumeMoves = tsumeMode ? Math.ceil(kifu.length / 2) : 0;
 
   const allPositions: GameState[] = history.length > 0 ? [...history, gameState] : [gameState];
   const displayedState: GameState = isReviewing ? (allPositions[reviewIndex] ?? gameState) : gameState;
@@ -73,23 +63,12 @@ export default function GamePage() {
     }
   }, []);
 
-  // ── Detect tsume solved ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!tsumeMode || tsumeSolved) return;
-    if (gameState.status === "checkmate" && gameState.winner === 0) {
-      setTsumeSolved(true);
-      if (tsumePuzzle) {
-        setTsumeSolvedIds(prev => new Set([...prev, tsumePuzzle.id]));
-      }
-    }
-  }, [tsumeMode, tsumeSolved, gameState.status, gameState.winner, tsumePuzzle]);
-
   // ── Timer reset on turn change ──────────────────────────────────────────
   useEffect(() => { setTimeLeft(TIMER_SECONDS); }, [gameState.currentPlayer]);
 
   // ── Timer countdown ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (!timerEnabled || tsumeMode || isOver || cpuThinking || !isHumanTurn || isReviewing) return;
+    if (!timerEnabled || isOver || cpuThinking || !isHumanTurn || isReviewing) return;
     if (timeLeft <= 0) {
       const loser = gameStateRef.current.currentPlayer;
       setForcedGameOver({ winner: (1 - loser) as Player, reason: "時間切れ" });
@@ -97,7 +76,7 @@ export default function GamePage() {
     }
     const id = setInterval(() => setTimeLeft(t => t - 1), 1000);
     return () => clearInterval(id);
-  }, [timerEnabled, tsumeMode, timeLeft, isOver, cpuThinking, isHumanTurn, isReviewing]);
+  }, [timerEnabled, timeLeft, isOver, cpuThinking, isHumanTurn, isReviewing]);
 
   // ── CPU move trigger ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -105,10 +84,10 @@ export default function GamePage() {
     if (gameState.currentPlayer !== CPU_PLAYER) return;
 
     setCpuThinking(true);
-    const delay = effectiveCpuStrength === "strong" ? 200 : 500 + Math.random() * 400;
+    const delay = cpuStrength === "strong" ? 80 : 500 + Math.random() * 400;
 
     const timer = setTimeout(() => {
-      const move = effectiveCpuStrength === "strong"
+      const move = cpuStrength === "strong"
         ? getStrongCPUMove(gameState, 3)
         : getCPUMove(gameState);
 
@@ -125,7 +104,7 @@ export default function GamePage() {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [cpuActive, effectiveCpuStrength, gameState, isOver, isReviewing]);
+  }, [cpuActive, cpuStrength, gameState, isOver, isReviewing]);
 
   // ── Execute a board move ──────────────────────────────────────────────────
   const executeMove = useCallback((move: Move) => {
@@ -193,8 +172,8 @@ export default function GamePage() {
     setPendingPromotion(null);
   }, [pendingPromotion, executeMove]);
 
-  const resetBoard = useCallback((state: GameState) => {
-    setGameState(state);
+  const handleNewGame = useCallback(() => {
+    setGameState(createInitialState());
     setHistory([]);
     setKifu([]);
     setSelectedSquare(null);
@@ -205,14 +184,7 @@ export default function GamePage() {
     setForcedGameOver(null);
     setTimeLeft(TIMER_SECONDS);
     setReviewIndex(null);
-    setTsumeSolved(false);
   }, []);
-
-  const handleNewGame = useCallback(() => {
-    resetBoard(createInitialState());
-    setTsumeMode(false);
-    setTsumePuzzle(null);
-  }, [resetBoard]);
 
   const handleResign = useCallback(() => {
     if (isOver) return;
@@ -236,17 +208,15 @@ export default function GamePage() {
     setForcedGameOver(null);
     setTimeLeft(TIMER_SECONDS);
     setReviewIndex(null);
-    setTsumeSolved(false);
   }, [history, cpuActive]);
 
   const handleCycleCpu = useCallback(() => {
-    if (tsumeMode) return;
     setCpuStrength(prev => prev === "off" ? "weak" : prev === "weak" ? "strong" : "off");
     setSelectedSquare(null);
     setSelectedDropPiece(null);
     setLegalMoves([]);
     setCpuThinking(false);
-  }, [tsumeMode]);
+  }, []);
 
   const handleNavigate = useCallback((index: number | null) => {
     setReviewIndex(index);
@@ -269,75 +239,44 @@ export default function GamePage() {
     setForcedGameOver(null);
     setTimeLeft(TIMER_SECONDS);
     setReviewIndex(null);
-    setTsumeSolved(false);
   }, [reviewIndex, allPositions, gameState, history, kifu]);
 
   const handleLoadSfen = useCallback((state: GameState) => {
-    resetBoard(state);
-    setTsumeMode(false);
-    setTsumePuzzle(null);
+    setGameState(state);
+    setHistory([]);
+    setKifu([]);
+    setSelectedSquare(null);
+    setSelectedDropPiece(null);
+    setLegalMoves([]);
+    setPendingPromotion(null);
+    setCpuThinking(false);
+    setForcedGameOver(null);
+    setTimeLeft(TIMER_SECONDS);
+    setReviewIndex(null);
     setShowSfen(false);
-  }, [resetBoard]);
-
-  // ── Tsume handlers ────────────────────────────────────────────────────────
-  const handleStartTsumePuzzle = useCallback((state: GameState, puzzle: TsumePuzzle) => {
-    resetBoard(state);
-    setTsumeMode(true);
-    setTsumePuzzle(puzzle);
-    setShowTsumePanel(false);
-  }, [resetBoard]);
-
-  const handleStartCustomTsume = useCallback((state: GameState) => {
-    resetBoard(state);
-    setTsumeMode(true);
-    setTsumePuzzle(null);
-    setShowTsumePanel(false);
-  }, [resetBoard]);
-
-  const handleExitTsume = useCallback(() => {
-    setTsumeMode(false);
-    setTsumePuzzle(null);
-    setTsumeSolved(false);
-    setShowTsumePanel(false);
   }, []);
 
-  const handleNextPuzzle = useCallback(() => {
-    if (!tsumePuzzle) return;
-    const idx = TSUME_PUZZLES.findIndex(p => p.id === tsumePuzzle.id);
-    const next = TSUME_PUZZLES[idx + 1];
-    if (next) {
-      try {
-        const state = sfenToState(next.sfen);
-        resetBoard(state);
-        setTsumePuzzle(next);
-      } catch { /* ignore */ }
-    } else {
-      // All done
-      setTsumeMode(false);
-      setTsumePuzzle(null);
-      setTsumeSolved(false);
-    }
-  }, [tsumePuzzle, resetBoard]);
-
-  const goteHandFlipped = !tsumeMode && cpuStrength === "off";
+  const goteHandFlipped = cpuStrength === "off";
 
   return (
-    <div className="w-full min-h-[100dvh] bg-background text-foreground font-serif flex flex-col items-center gap-2 p-2 box-border">
-
+    <div
+      className="w-full min-h-[100dvh] bg-background text-foreground font-serif flex flex-col items-center p-1 box-border"
+      style={{ gap: "clamp(0.25rem, 1vmin, 0.5rem)", userSelect: "none" }}
+    >
       {/* Review mode banner */}
       {isReviewing && (
         <div
-          className="w-full flex items-center justify-between px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-lg text-sm font-bold text-primary cursor-pointer"
-          style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}
-          onClick={() => setShowKifu(true)}
+          className="w-full flex items-center justify-between px-3 py-1 bg-primary/10 border border-primary/30 rounded-lg text-sm font-bold text-primary cursor-pointer active:bg-primary/20"
+          style={{ maxWidth: BOARD_SIZE, touchAction: "manipulation" }}
+          onPointerUp={() => setShowKifu(true)}
         >
-          <span>棋譜閲覧中 — 第{reviewIndex === 0 ? "0（初期局面）" : `${reviewIndex}`}手</span>
-          <span className="text-xs font-normal opacity-70">クリックで棋譜を開く</span>
+          <span className="text-xs">棋譜閲覧中 — 第{reviewIndex === 0 ? "0（初期）" : `${reviewIndex}`}手</span>
+          <span className="text-xs font-normal opacity-70">タップで棋譜を開く</span>
         </div>
       )}
 
       {/* Status bar */}
-      <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
+      <div className="w-full" style={{ maxWidth: BOARD_SIZE }}>
         <GameStatus
           gameState={gameState}
           onNewGame={handleNewGame}
@@ -354,32 +293,11 @@ export default function GamePage() {
           onShowKifu={() => setShowKifu(true)}
           kifuCount={kifu.length}
           onShowSfen={() => setShowSfen(true)}
-          onShowTsume={() => setShowTsumePanel(true)}
-          tsumeMode={tsumeMode}
-          tsumeMoves={tsumeMoves}
         />
       </div>
 
-      {/* Tsume puzzle info bar */}
-      {tsumeMode && tsumePuzzle && !tsumeSolved && (
-        <div
-          className="w-full flex items-center justify-between px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-lg text-sm"
-          style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}
-        >
-          <span className="font-bold text-violet-800">
-            {tsumePuzzle.difficulty}「{tsumePuzzle.title}」
-          </span>
-          <button
-            onClick={handleExitTsume}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            やめる
-          </button>
-        </div>
-      )}
-
       {/* Gote hand */}
-      <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
+      <div className="w-full" style={{ maxWidth: BOARD_SIZE }}>
         <HandPieces
           player={1}
           pieces={displayedState.capturedByGote}
@@ -393,10 +311,7 @@ export default function GamePage() {
       {/* Board */}
       <div
         className="flex-shrink-0"
-        style={{
-          width: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)",
-          height: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)",
-        }}
+        style={{ width: BOARD_SIZE, height: BOARD_SIZE }}
       >
         <Board
           board={displayedState.board}
@@ -408,7 +323,7 @@ export default function GamePage() {
       </div>
 
       {/* Sente hand */}
-      <div className="w-full" style={{ maxWidth: "min(calc(100dvh - 13rem), calc(100dvw - 1rem), 660px)" }}>
+      <div className="w-full" style={{ maxWidth: BOARD_SIZE }}>
         <HandPieces
           player={0}
           pieces={displayedState.capturedBySente}
@@ -420,49 +335,6 @@ export default function GamePage() {
       </div>
 
       <PromotionDialog move={pendingPromotion} onDecide={handlePromotionDecision} />
-
-      {/* ── Tsume solved overlay ────────────────────────────────────────── */}
-      {tsumeSolved && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 font-serif text-center"
-            style={{ width: "min(340px, 90vw)" }}>
-            <div className="text-5xl">🎉</div>
-            <h2 className="text-2xl font-black text-primary tracking-widest">正解！</h2>
-            {tsumePuzzle && (
-              <p className="text-base font-bold text-foreground">
-                {tsumePuzzle.difficulty}「{tsumePuzzle.title}」<br />
-                <span className="text-sm font-normal text-muted-foreground">{kifu.length}手で解決</span>
-              </p>
-            )}
-            {!tsumePuzzle && (
-              <p className="text-base text-muted-foreground">{kifu.length}手詰みを発見！</p>
-            )}
-            <div className="flex flex-col gap-2 w-full">
-              {tsumePuzzle && TSUME_PUZZLES.findIndex(p => p.id === tsumePuzzle.id) < TSUME_PUZZLES.length - 1 && (
-                <button
-                  onClick={handleNextPuzzle}
-                  className="w-full py-2 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors"
-                >
-                  次の問題へ
-                </button>
-              )}
-              <button
-                onClick={() => setShowTsumePanel(true)}
-                className="w-full py-2 rounded-lg border border-border bg-card text-foreground font-bold text-sm hover:bg-muted transition-colors"
-              >
-                問題一覧
-              </button>
-              <button
-                onClick={handleExitTsume}
-                className="w-full py-2 rounded-lg border border-border bg-card text-muted-foreground font-bold text-sm hover:bg-muted transition-colors"
-              >
-                通常対局に戻る
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showKifu && (
         <KifuPanel
@@ -480,16 +352,6 @@ export default function GamePage() {
           gameState={gameState}
           onLoadPosition={handleLoadSfen}
           onClose={() => setShowSfen(false)}
-        />
-      )}
-
-      {showTsumePanel && (
-        <TsumePanel
-          currentState={gameState}
-          onStartPuzzle={handleStartTsumePuzzle}
-          onStartCustom={handleStartCustomTsume}
-          onClose={() => setShowTsumePanel(false)}
-          solvedIds={tsumeSolvedIds}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { Board as BoardType, Move } from "@/lib/shogi";
 import { PieceDisplay } from "./PieceDisplay";
 import { cn } from "@/lib/utils";
@@ -12,9 +12,15 @@ interface BoardProps {
 }
 
 const ROW_LABELS = ["一", "二", "三", "四", "五", "六", "七", "八", "九"];
-const LABEL = "2rem";
+const LABEL = "1.6rem";
 
 export const Board: React.FC<BoardProps> = ({ board, selectedSquare, legalMoves, lastMove, onSquareClick }) => {
+  // Use pointer events for instant response on touch (no 300ms delay)
+  const handlePointerUp = useCallback((e: React.PointerEvent, row: number, col: number) => {
+    e.preventDefault();
+    onSquareClick(row, col);
+  }, [onSquareClick]);
+
   const renderSquare = (row: number, col: number) => {
     const square = board[row][col];
     const isSelected = selectedSquare?.[0] === row && selectedSquare?.[1] === col;
@@ -26,20 +32,24 @@ export const Board: React.FC<BoardProps> = ({ board, selectedSquare, legalMoves,
       <div
         key={`${row}-${col}`}
         className={cn(
-          "relative border-[0.5px] border-[#8B5A2B]/50 flex items-center justify-center cursor-pointer transition-colors",
-          isLastTo || isLastFrom ? "bg-[#e8d598]" : "bg-[#F5ECD5] hover:bg-[#ecdcb0]",
+          "relative border-[0.5px] border-[#8B5A2B]/50 flex items-center justify-center",
+          "cursor-pointer select-none transition-colors",
+          "active:brightness-90",
+          isLastTo || isLastFrom ? "bg-[#e8d598]" : "bg-[#F5ECD5]",
+          !isLastTo && !isLastFrom && isSelected && "bg-[#d4e8a0]",
         )}
-        onClick={() => onSquareClick(row, col)}
+        style={{ touchAction: "manipulation" }}
+        onPointerUp={(e) => handlePointerUp(e, row, col)}
         data-testid={`square-${row}-${col}`}
       >
         {isLegalMove && !square && (
-          <div className="absolute w-[30%] h-[30%] rounded-full bg-primary/55 pointer-events-none z-10" />
+          <div className="absolute w-[32%] h-[32%] rounded-full bg-primary/55 pointer-events-none z-10" />
         )}
         {isLegalMove && square && (
           <div className="absolute inset-0 ring-2 ring-inset ring-destructive/60 pointer-events-none z-10" />
         )}
         {square && (
-          <div className="absolute inset-[5%]">
+          <div className="absolute inset-[4%]">
             <PieceDisplay piece={square} isSelected={isSelected} />
           </div>
         )}
@@ -60,13 +70,12 @@ export const Board: React.FC<BoardProps> = ({ board, selectedSquare, legalMoves,
       {[9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => (
         <div
           key={`ch-${n}`}
-          className="flex items-center justify-center font-bold text-[#4a3525]"
-          style={{ fontSize: "clamp(0.6rem, 1.5vmin, 0.9rem)" }}
+          className="flex items-center justify-center font-bold text-[#4a3525] select-none"
+          style={{ fontSize: "clamp(0.55rem, 1.4vmin, 0.85rem)" }}
         >
           {n}
         </div>
       ))}
-      {/* Top-right corner */}
       <div />
 
       {/* Board cells + row labels */}
@@ -74,29 +83,31 @@ export const Board: React.FC<BoardProps> = ({ board, selectedSquare, legalMoves,
         <React.Fragment key={`row-${row}`}>
           {rowArr.map((_, col) => renderSquare(row, col))}
           <div
-            className="flex items-center justify-center font-bold text-[#4a3525] pl-1"
-            style={{ fontSize: "clamp(0.6rem, 1.5vmin, 0.9rem)" }}
+            className="flex items-center justify-center font-bold text-[#4a3525] select-none"
+            style={{ fontSize: "clamp(0.55rem, 1.4vmin, 0.85rem)", paddingLeft: "2px" }}
           >
             {ROW_LABELS[row]}
           </div>
         </React.Fragment>
       ))}
 
-      {/* Board outer border — overlaid on the 9×9 area only */}
+      {/* Outer border overlay */}
       <div
         className="absolute pointer-events-none border-[3px] border-[#5C4033] shadow-2xl"
         style={{ top: LABEL, left: 0, right: LABEL, bottom: 0 }}
       />
 
-      {/* Star points (decorative intersections at 3rd and 7th lines) */}
+      {/* Star points */}
       {[
         [1 / 3, 1 / 3], [1 / 3, 2 / 3],
         [2 / 3, 1 / 3], [2 / 3, 2 / 3],
       ].map(([y, x], i) => (
         <div
           key={`star-${i}`}
-          className="absolute w-[6px] h-[6px] rounded-full bg-[#5C4033] pointer-events-none"
+          className="absolute rounded-full bg-[#5C4033] pointer-events-none"
           style={{
+            width: "clamp(4px, 1vmin, 7px)",
+            height: "clamp(4px, 1vmin, 7px)",
             top: `calc(${LABEL} + ${y * 100}% * (1 - ${LABEL} / 100%))`,
             left: `calc(${x * 100}% * (1 - ${LABEL} / 100%))`,
             transform: "translate(-50%, -50%)",

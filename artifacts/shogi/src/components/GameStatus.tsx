@@ -21,15 +21,12 @@ interface GameStatusProps {
   onShowKifu: () => void;
   kifuCount: number;
   onShowSfen: () => void;
-  onShowTsume: () => void;
-  tsumeMode: boolean;
-  tsumeMoves: number;
 }
 
 const CPU_LABELS: Record<CpuStrength, string> = {
-  off:    "CPU: 切",
-  weak:   "CPU: 弱",
-  strong: "CPU: 強",
+  off:    "CPU:切",
+  weak:   "CPU:弱",
+  strong: "CPU:強",
 };
 
 function timerColor(t: number) {
@@ -38,12 +35,33 @@ function timerColor(t: number) {
   return "text-red-600 animate-pulse";
 }
 
+const Btn: React.FC<{
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+  "data-testid"?: string;
+}> = ({ onClick, disabled, className, children, ...rest }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{ touchAction: "manipulation" }}
+    className={cn(
+      "text-xs font-bold px-2 py-1 rounded-full border transition-colors whitespace-nowrap select-none",
+      "active:scale-95",
+      className,
+    )}
+    {...rest}
+  >
+    {children}
+  </button>
+);
+
 export const GameStatus: React.FC<GameStatusProps> = ({
   gameState, onNewGame, onResign, onUndo, canUndo,
   cpuStrength, onCycleCpu, cpuThinking,
   timerEnabled, onToggleTimer, timeLeft,
   forcedGameOver, onShowKifu, kifuCount, onShowSfen,
-  onShowTsume, tsumeMode, tsumeMoves,
 }) => {
   const { currentPlayer, status, winner, inCheck } = gameState;
   const isOver = status !== "playing" || forcedGameOver !== null;
@@ -51,14 +69,9 @@ export const GameStatus: React.FC<GameStatusProps> = ({
   const displayReason = forcedGameOver?.reason ?? (status === "checkmate" ? "詰み" : "引き分け");
 
   return (
-    <div className="flex flex-row flex-wrap items-center justify-between gap-2 px-3 py-2 bg-card border border-border rounded-lg shadow-md w-full">
-      {/* Left: status */}
+    <div className="flex flex-col gap-1.5 px-2.5 py-2 bg-card border border-border rounded-lg shadow-md w-full">
+      {/* Row 1: game status */}
       <div className="flex items-center gap-2 min-w-0 flex-wrap">
-        {tsumeMode && (
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-300 whitespace-nowrap">
-            詰将棋 {tsumeMoves > 0 ? `${tsumeMoves}手` : ""}
-          </span>
-        )}
         {isOver ? (
           <>
             <span className="text-base font-black text-destructive tracking-widest">{displayReason}</span>
@@ -70,15 +83,15 @@ export const GameStatus: React.FC<GameStatusProps> = ({
           </>
         ) : (
           <>
-            <span className="text-base font-bold text-foreground whitespace-nowrap">
+            <span className="text-sm font-bold text-foreground whitespace-nowrap">
               {cpuThinking
-                ? <span className="text-primary animate-pulse">CPU思考中...</span>
-                : `手番: ${currentPlayer === 0 ? "先手" : "後手"}`}
+                ? <span className="text-primary animate-pulse">CPU思考中…</span>
+                : `手番: ${currentPlayer === 0 ? "先手▲" : "後手△"}`}
             </span>
             {inCheck !== null && !cpuThinking && (
               <span className="text-sm font-bold text-destructive animate-pulse">王手！</span>
             )}
-            {timerEnabled && !cpuThinking && !tsumeMode && (
+            {timerEnabled && !cpuThinking && (
               <span className={cn("text-sm font-mono font-bold tabular-nums", timerColor(timeLeft))}>
                 {String(Math.floor(timeLeft / 60)).padStart(2, "0")}:{String(timeLeft % 60).padStart(2, "0")}
               </span>
@@ -87,101 +100,82 @@ export const GameStatus: React.FC<GameStatusProps> = ({
         )}
       </div>
 
-      {/* Right: controls */}
-      <div className="flex items-center gap-1.5 flex-wrap justify-end">
-        {!tsumeMode && (
-          <button
-            onClick={onCycleCpu}
-            className={cn(
-              "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
-              cpuStrength === "off"
-                ? "bg-card text-muted-foreground border-border hover:border-primary/50"
-                : cpuStrength === "weak"
-                ? "bg-amber-100 text-amber-800 border-amber-300"
-                : "bg-red-100 text-red-800 border-red-300",
-            )}
-            data-testid="toggle-cpu-mode"
-          >
-            {CPU_LABELS[cpuStrength]}
-          </button>
-        )}
+      {/* Row 2: controls */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <Btn
+          onClick={onCycleCpu}
+          data-testid="toggle-cpu-mode"
+          className={cn(
+            cpuStrength === "off"
+              ? "bg-card text-muted-foreground border-border"
+              : cpuStrength === "weak"
+              ? "bg-amber-100 text-amber-800 border-amber-300"
+              : "bg-red-100 text-red-800 border-red-300",
+          )}
+        >
+          {CPU_LABELS[cpuStrength]}
+        </Btn>
 
-        {!tsumeMode && (
-          <button
-            onClick={onToggleTimer}
-            className={cn(
-              "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
-              timerEnabled
-                ? "bg-blue-100 text-blue-800 border-blue-300"
-                : "bg-card text-muted-foreground border-border hover:border-primary/50",
-            )}
-            data-testid="toggle-timer"
-          >
-            {timerEnabled ? "秒読: 入" : "秒読: 切"}
-          </button>
-        )}
+        <Btn
+          onClick={onToggleTimer}
+          data-testid="toggle-timer"
+          className={cn(
+            timerEnabled
+              ? "bg-blue-100 text-blue-800 border-blue-300"
+              : "bg-card text-muted-foreground border-border",
+          )}
+        >
+          {timerEnabled ? "秒読:入" : "秒読:切"}
+        </Btn>
 
-        <button
+        <Btn
           onClick={onShowKifu}
-          className="text-xs font-bold px-2.5 py-1 rounded-full border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors whitespace-nowrap"
           data-testid="button-show-kifu"
+          className="bg-card text-muted-foreground border-border"
         >
           棋譜{kifuCount > 0 ? `(${kifuCount})` : ""}
-        </button>
+        </Btn>
 
-        <button
+        <Btn
           onClick={onShowSfen}
-          className="text-xs font-bold px-2.5 py-1 rounded-full border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors whitespace-nowrap"
           data-testid="button-show-sfen"
-          title="SFEN形式で局面を保存・共有"
+          className="bg-card text-muted-foreground border-border"
         >
           共有
-        </button>
+        </Btn>
 
-        <button
-          onClick={onShowTsume}
-          className={cn(
-            "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
-            tsumeMode
-              ? "bg-violet-100 text-violet-800 border-violet-300"
-              : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground",
-          )}
-          data-testid="button-show-tsume"
-          title="詰将棋モード"
-        >
-          詰将棋
-        </button>
+        <div className="flex-1" />
 
         {!isOver && (
-          <button
+          <Btn
             onClick={onUndo}
             disabled={!canUndo}
+            data-testid="button-undo"
             className={cn(
-              "text-xs font-bold px-2.5 py-1 rounded-full border transition-colors whitespace-nowrap",
               canUndo
-                ? "bg-card text-foreground border-border hover:border-primary/50 hover:bg-muted"
+                ? "bg-card text-foreground border-border"
                 : "bg-card text-muted-foreground border-border opacity-40 cursor-not-allowed",
             )}
-            data-testid="button-undo"
           >
             待った
-          </button>
+          </Btn>
         )}
 
         {!isOver && (
-          <button
+          <Btn
             onClick={onResign}
-            className="text-xs font-bold px-2.5 py-1 rounded-full border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors whitespace-nowrap"
             data-testid="button-resign"
+            className="border-destructive/50 text-destructive"
           >
             投了
-          </button>
+          </Btn>
         )}
 
         <Button
           onClick={onNewGame}
           size="sm"
-          className="font-bold tracking-wider text-xs whitespace-nowrap h-7 px-3"
+          style={{ touchAction: "manipulation" }}
+          className="font-bold tracking-wider text-xs whitespace-nowrap h-7 px-3 select-none active:scale-95"
           data-testid="button-new-game"
         >
           新局
